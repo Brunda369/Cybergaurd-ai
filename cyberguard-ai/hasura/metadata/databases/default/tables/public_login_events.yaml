@@ -1,0 +1,27 @@
+table:
+  name: login_events
+  schema: public
+object_relationships:
+  - name: incident
+    using:
+      foreign_key_constraint_on:
+        column: id
+        table:
+          name: incidents
+          schema: public
+select_permissions:
+  - role: user
+    permission:
+      columns:
+        - id
+        - ip
+        - username
+        - password
+        - attempted_command
+        - port
+        - protocol
+        - timestamp
+        - success
+        - created_at
+      filter: {}
+      allow_aggregations: true

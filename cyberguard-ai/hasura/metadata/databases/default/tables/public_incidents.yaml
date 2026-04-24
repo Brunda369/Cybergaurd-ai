@@ -1,0 +1,24 @@
+table:
+  name: incidents
+  schema: public
+object_relationships:
+  - name: login_event
+    using:
+      foreign_key_constraint_on: id
+select_permissions:
+  - role: user
+    permission:
+      columns:
+        - id
+        - event_id
+        - ip
+        - risk
+        - summary
+        - mitre_technique
+        - recommendation
+        - technique_id
+        - technique_name
+        - created_at
+        - updated_at
+      filter: {}
+      allow_aggregations: true

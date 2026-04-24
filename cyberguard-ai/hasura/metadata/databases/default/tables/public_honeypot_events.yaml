@@ -1,0 +1,16 @@
+table:
+  name: honeypot_events
+  schema: public
+select_permissions:
+  - role: user
+    permission:
+      columns:
+        - id
+        - ip
+        - username
+        - password
+        - attempted_command
+        - port
+        - protocol
+        - timestamp
+      filter: {}

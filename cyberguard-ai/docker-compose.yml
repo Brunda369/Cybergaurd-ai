@@ -1,0 +1,160 @@
+services:
+  postgres:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: cyberguard
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db-init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  hasura:
+    image: hasura/graphql-engine:v2.38.0
+    container_name: cyberguard-hasura
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      HASURA_GRAPHQL_DATABASE_URL: postgres://postgres:postgres@postgres:5432/cyberguard
+      HASURA_GRAPHQL_ENABLE_CONSOLE: "true"
+      HASURA_GRAPHQL_DEV_MODE: "true"
+      HASURA_GRAPHQL_ADMIN_SECRET: myadminsecret
+      HASURA_GRAPHQL_METADATA_DATABASE_URL: postgres://postgres:postgres@postgres:5432/cyberguard
+      HASURA_GRAPHQL_JWT_SECRET: '{"type":"HS256","key":"veryverylonghasura_graphql_jwt_secret_token_please_work"}'
+      HASURA_GRAPHQL_UNAUTHORIZED_ROLE: "viewer"
+      HASURA_GRAPHQL_CORS_DOMAIN: "http://localhost:5173"
+      HASURA_GRAPHQL_ENABLE_CORS: "true"
+
+
+    ports:
+      - "8081:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: cyberguard-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:11434/api/tags || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  temporal:
+    image: temporalio/auto-setup:1.24.2
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB: postgres12_pgx
+      POSTGRES_HOST: postgres
+      POSTGRES_SEEDS: postgres
+      DB_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PWD: postgres
+      DBNAME: temporal
+      VISIBILITY_DBNAME: temporal_visibility
+    ports:
+      - "7233:7233"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 7233"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 60s
+
+  model-service:
+    container_name: cyberguard-model-service
+    build:
+      context: ./model_service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./model_service/models:/app/models
+      - ./model_service/model_samples.jsonl:/app/model_samples.jsonl
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  temporal-ui:
+    image: temporalio/ui:2.30.0
+    container_name: cyberguard-temporal-ui
+    restart: unless-stopped
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+    ports:
+      - "8080:8080"
+
+  temporal-worker:
+    container_name: cyberguard-temporal-worker
+    build:
+      context: ./temporal
+      dockerfile: Dockerfile
+    working_dir: /app
+    command: npm run dev
+    depends_on:
+      temporal:
+        condition: service_healthy
+      hasura:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+      model-service:
+        condition: service_healthy
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      HASURA_URL: http://hasura:8080/v1/graphql
+      HASURA_ADMIN_SECRET: myadminsecret
+      OLLAMA_MODEL: qwen2.5:1.5b
+      OLLAMA_URL: http://ollama:11434
+      GROQ_API_KEY: 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
+      GROQ_MODEL: groq/compound-mini
+      GROQ_TIMEOUT_MS: "60000"
+      MODEL_SERVICE_URL: http://model-service:8000/predict
+      MODEL_SERVICE_DIR: /app/model_service
+
+
+  trigger-webhook:
+    build:
+      context: ./my-app
+    container_name: cyberguard-trigger-webhook
+    command: ["npm", "run", "dev"]
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      temporal:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  ollama:

@@ -1,0 +1,14 @@
+table:
+  name: ip_blocks
+  schema: public
+select_permissions:
+  - role: user
+    permission:
+      columns:
+        - id
+        - ip
+        - reason
+        - created_at
+        - created_by
+      filter: {}
+      allow_aggregations: true

@@ -1,0 +1,37 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Hasura -> Lambda (TS) -> Temporal trigger
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 30
+    MemorySize: 512
+    Environment:
+      Variables:
+        TEMPORAL_ADDRESS: "temporal:7233"
+
+Resources:
+  TriggerApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: dev
+
+  HasuraTemporalTriggerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: dist/handler.handler
+      Events:
+        Root:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TriggerApi
+            Path: /
+            Method: post
+        TriggerWorkflow:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TriggerApi
+            Path: /trigger-workflow
+            Method: post
